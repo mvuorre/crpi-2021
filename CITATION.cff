@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: |
+  Code and data supplement to "Curiosity and the desire for agency: wait, wait … don't tell me!"
+version: 1.0.0
+license: CC-BY-4.0
+type: dataset
+abstract: |
+  Abstract Past research has shown that when people are curious they are willing to wait to get an answer if the alternative is to not get the answer at all—a result that has been taken to mean that people valued the answers, and interpreted as supporting a reinforcement-learning (RL) view of curiosity. An alternative 'need for agency' view is forwarded that proposes that when curious, people are intrinsically motivated to actively seek the answer themselves rather than having it given to them. If answers can be freely obtained at any time, the RL view holds that, because time delay depreciates value, people will not wait to receive the answer. Because they value items that they are curious about more than those about which they are not curious they should seek the former more quickly. In contrast, the need for agency view holds that in order to take advantage of the opportunity to obtain the answer by their own efforts, when curious, people may wait. Consistent with this latter view, three experiments showed that even when the answer could be obtained at any time, people spontaneously waited longer to request the answer when they were curious. Furthermore, rather than requesting the answer itself—a response that would have maximally reduced informational uncertainty—in all three experiments, people asked for partial information in the form of hints, when curious. Such active hint seeking predicted later recall. The 'need for agency' view of curiosity, then, was supported by all three experiments.
+message: |
+  Please cite as indicated.
+authors:
+  - family-names: Metcalfe
+    given-names: Janet
+    orcid: https://orcid.org/0000-0003-3286-9475
+    affiliation: Columbia University
+  - family-names: Kennedy-Pyers
+    given-names: Treva
+    affiliation: Columbia University
+  - family-names: Vuorre
+    given-names: Matti
+    orcid: https://orcid.org/0000-0001-5052-066X
+    affiliation: Tilburg University
+identifiers:
+  - type: doi
+    value: 10.1186/s41235-021-00330-0
+keywords:
+  - psychology
