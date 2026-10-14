@@ -1,0 +1,731 @@
+---
+title: Results
+author: Matti Vuorre
+output: 
+  html_document:
+    toc: true
+    toc_level: 2
+    toc_float: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+library(afex)
+library(sjPlot)
+# library(ggeffects)
+library(glue)
+library(scales)
+library(patchwork)
+library(broom.mixed)
+library(tidyverse)
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  cache = TRUE,
+  fig.retina = 2,
+  fig.align = "center"
+)
+theme_set(
+  theme_linedraw(base_size = 12) + 
+    theme(
+      panel.grid = element_blank()
+    )
+)
+```
+
+# Experiment 1
+
+```{r exp1-data, results = 'hide'}
+exp1 <- read_csv("data/exp1.csv")
+```
+
+## Curiosity RT
+
+```{r}
+exp1 %>% 
+  group_by(participant) %>% 
+  summarise(
+    curiosity_rt = mean(curiosity_rt, na.rm = T)
+      ) %>% 
+  summarise(
+    mean_curiosity_rt = mean(curiosity_rt),
+    sd_curiosity_rt = sd(curiosity_rt)
+  )
+```
+
+### Correlation with curiosity
+
+Does time spent rating curiosity correlate with curiosity
+
+```{r}
+exp1 %>% 
+  group_by(participant) %>% 
+  summarise(estimate = cor(curiosity, curiosity_rt)) %>% 
+  {t.test(.$estimate)}
+```
+
+## Curiosity rating
+
+Mean time spent waiting, and curiosity frequency distribution, collapsed over participants and divided into 10 intervals, and the time spent at each curiosity level
+
+```{r}
+summarise(exp1, mean(choice_rt), sd(choice_rt))
+exp1 %>% 
+  mutate(
+    curiosity_bin = cut(
+      curiosity, 
+      breaks = seq(0, 1, by = .1),
+      include.lowest = TRUE
+    )
+  ) %>% 
+  group_by(curiosity_bin) %>% 
+  summarise(
+    frequency = n(),
+    mean_choice_rt = format(round(mean(choice_rt), 2), nsmall = 2),
+    sd_choice_rt = format(round(sd(choice_rt), 2), nsmall = 2)
+  ) %>% 
+  mutate(mean_sd = glue("{mean_choice_rt} ({sd_choice_rt})")) %>% 
+  select(-mean_choice_rt, -sd_choice_rt) %>% 
+  write_csv("exp1-frequency.csv")
+```
+
+## Regression of time on curiosity
+
+```{r}
+fit_1_time <- lmer(
+  choice_rt ~ curiosity_c + (curiosity_c | participant) + (1 | cue), 
+  data = exp1
+  )
+summary(fit_1_time)
+anova(fit_1_time)
+exp1_p1 <- plot_model(fit_1_time, type = "eff", "curiosity_c")[[1]] + 
+  coord_cartesian(ylim = c(1, 5)) +
+  labs(title = "", x = "", y = "'Waiting' time (s)")
+```
+
+## Hint seeking
+
+2 models: a. binomial of any hints, b. number of hints
+
+```{r}
+exp1 <- mutate(exp1, hints_any = as.numeric(hints > 0))
+fit_1_hint_a <- glmer(
+  hints_any ~ curiosity_c + (curiosity_c | participant) + (1 | cue),
+  family = binomial(),
+  data = exp1
+)
+summary(fit_1_hint_a)
+anova(fit_1_hint_a)
+exp1_p2 <- plot_model(fit_1_hint_a, type = "eff", "curiosity_c")[[1]] + 
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  labs(title = "", x = "", y = "p(Asked for hint(s))")
+
+fit_1_hint_b <- lmer(
+  hints ~ curiosity_c + (curiosity_c | participant) + (1 | cue),
+  data = exp1
+)
+summary(fit_1_hint_b)
+anova(fit_1_hint_b)
+exp1_p3 <- plot_model(fit_1_hint_b, type = "eff", "curiosity_c")[[1]] + 
+  labs(title = "", x = "", y = "Number of hints requested")
+```
+
+## Time spent studying the answer
+
+```{r}
+summarise(exp1, mean(answer_rt), sd(answer_rt))
+x <- lmer(
+  answer_rt ~ curiosity_c + (curiosity_c | participant) + (1 | cue),
+  data = exp1
+)
+summary(x)
+anova(x)
+```
+
+## Final recall
+
+```{r exp1-testmodel}
+exp1 %>% 
+  group_by(participant) %>% 
+  summarise(recall = mean(test_accuracy, na.rm = TRUE)) %>% 
+  summarise(mean_recall = mean(recall), sd_recall = sd(recall))
+fit_1_test <- glmer(
+  test_accuracy ~ curiosity_c + (curiosity_c | participant) + (1 | cue),
+  family = binomial(),
+  data = exp1
+)
+summary(fit_1_test)
+anova(fit_1_test)
+exp1_p4 <- plot_model(fit_1_test, type = "eff", "curiosity_c")[[1]] + 
+  coord_cartesian(ylim = c(0, 1)) +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  labs(title = "", x = "", y = "p(Final recall)")
+```
+
+```{r exp1-fig, fig.width = 8, fig.height = 3.4}
+(exp1_p1 | exp1_p2 | exp1_p3 | exp1_p4) &
+  labs(x = "Curiosity\n(centered)") &
+  theme(aspect.ratio = 1)
+ggsave("1.png", height = 3)
+```
+
+# Experiment 2
+
+```{r exp2-data, results = 'hide'}
+exp2 <- read_csv("data/exp2.csv") %>% 
+  mutate(curiosity = factor(curiosity, levels = c("Not curious", "Curious"))) %>% 
+  mutate(wait = choice_rt + continue_rt)
+```
+
+```{r}
+prop.table(table(exp2$curiosity)) %>% round(2)
+```
+
+## Curiosity RT
+
+```{r}
+x <- exp2 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(
+    curiosity_rt = mean(curiosity_rt, na.rm = T)
+  ) %>% 
+  pivot_wider(id_cols = participant, names_from = curiosity, values_from = curiosity_rt)
+summary(x)
+t.test(x$Curious, x$`Not curious`, paired = T)
+```
+
+## Waiting time
+
+```{r}
+exp2_wt <- exp2 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(
+    time = mean(wait, na.rm = T)
+  ) %>% 
+  group_by(curiosity) %>% 
+  summarise(m = mean(time), sd = sd(time), n = n(), se = sd/sqrt(n))
+exp2_wt
+```
+
+
+```{r exp2-timemodel}
+fit_2_time <- lmer(
+  wait ~ curiosity + (curiosity | participant) + (curiosity | cue),
+  data = exp2
+)
+summary(fit_2_time)
+anova(fit_2_time)
+# exp2_p1 <- plot_model(fit_2_time, type = "eff", "curiosity")[[1]] + 
+#   labs(title = "", x = "", y = "Time thinking of answer")
+exp2_p1 <- exp2_wt %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("'Waiting' time", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+```
+
+## Hint seeking
+
+2 models: a. binomial of any hints, b. number of hints
+
+```{r}
+exp2 <- mutate(exp2, hints_any = as.numeric(hints > 0))
+prop.table(table(exp2$curiosity, exp2$hints_any), margin = 1)
+fit_2_hints_a <- glmer(
+  hints_any ~ curiosity + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = exp2
+)
+summary(fit_2_hints_a)
+anova(fit_2_hints_a)
+# exp2_p2 <- plot_model(fit_2_hints_a, type = "eff", "curiosity")[[1]] + 
+#   coord_cartesian(ylim = c(0, 1)) +
+#   labs(title = "", x = "", y = "p(Asked for hint(s))")
+exp2_p2 <- exp2 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(hints = mean(hints_any)) %>%
+  summarise(m = mean(hints), sd = sd(hints), n = n(), se = sd/sqrt(n)) %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("p(Asked for hint(s))", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+
+exp2_hints <- exp2 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(hints = mean(hints, na.rm = TRUE)) %>% 
+  summarise(m = mean(hints), sd = sd(hints), n = n(), se = sd/sqrt(n))
+exp2_hints
+
+fit_2_hints_b <- lmer(
+  hints ~ curiosity + (curiosity | participant) + (1 | cue),
+  data = exp2
+)
+summary(fit_2_hints_b)
+anova(fit_2_hints_b)
+# exp2_p3 <- plot_model(fit_2_hints_b, type = "eff", "curiosity")[[1]] + 
+#   labs(title = "", x = "", y = "Number of hints requested")
+exp2_p3 <- exp2_hints %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("Number of hints requested", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+```
+
+## Time spent studying the answer
+
+```{r}
+exp2 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(answer_rt = mean(answer_rt, na.rm = TRUE)) %>% 
+  summarise(m = mean(answer_rt), n = n(), sd = sd(answer_rt))
+x <- lmer(
+  answer_rt ~ curiosity + (curiosity | participant) + (curiosity | cue),
+  data = exp2
+)
+summary(x)
+anova(x)
+```
+
+## Final recall
+
+```{r}
+exp2_fr <- exp2 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(test_accuracy = mean(test_accuracy, na.rm = TRUE)) %>% 
+  summarise(m = mean(test_accuracy), sd = sd(test_accuracy), n = n(), se = sd/sqrt(n))
+exp2_fr
+exp2 %>% 
+  group_by(participant) %>% 
+  summarise(recall = mean(test_accuracy, na.rm = TRUE)) %>% 
+  summarise(mean_recall = mean(recall), sd_recall = sd(recall))
+fit_2_test <- glmer(
+  test_accuracy ~ curiosity + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = exp2
+)
+summary(fit_2_test)
+anova(fit_2_test)
+# exp2_p4 <- plot_model(x, type = "eff", "curiosity")[[1]] + 
+#   coord_cartesian(ylim = c(0, 1)) +
+#   labs(title = "", x = "", y = "p(Final recall)")
+exp2_p4 <- exp2_fr %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("p(Final recall)", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+```
+
+```{r exp2-fig, fig.width = 8, fig.height = 3.4}
+(exp2_p1 | exp2_p2 | exp2_p3 | exp2_p4) &
+  theme(aspect.ratio = 1)
+ggsave("2.png", height = 3.4)
+```
+
+# Experiment 3
+
+```{r exp3-data, results = 'hide'}
+exp3 <- read_csv("data/exp3.csv") %>% 
+  mutate(curiosity = factor(curiosity, levels = c("Not curious", "Curious"))) %>% 
+  mutate(wait = choice_rt + continue_rt)
+```
+
+```{r}
+prop.table(table(exp3$curiosity)) %>% round(2)
+```
+
+## Waiting time
+
+```{r}
+exp3_wt <- exp3 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(
+    time = mean(wait, na.rm = T)
+  ) %>% 
+  group_by(curiosity) %>% 
+  summarise(m = mean(time), sd = sd(time), n = n(), se = sd/sqrt(n))
+exp3_wt
+```
+
+```{r}
+fit_3_time <- lmer(
+  wait ~ curiosity + 
+    (curiosity | participant) + (1 | cue),
+  data = exp3
+)
+summary(fit_3_time)
+anova(fit_3_time)
+# exp3_p1 <- plot_model(x, type = "eff", "curiosity")[[1]] + 
+#   labs(title = "", x = "", y = "Time thinking of answer")
+exp3_p1 <- exp3_wt %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("'Waiting' time", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+```
+
+## Hint seeking
+
+2 models: a. binomial of any hints, b. number of hints
+
+```{r}
+exp3 <- mutate(exp3, hints_any = as.numeric(hints > 0))
+prop.table(table(exp3$curiosity, exp3$hints_any), margin = 1)
+fit_3_hints_a <- glmer(
+  hints_any ~ curiosity + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = exp3
+)
+summary(fit_3_hints_a)
+# exp3_p2 <- plot_model(fit_3_hints_a, type = "eff", "curiosity")[[1]] + 
+#   coord_cartesian(ylim = c(0, 1)) +
+#   labs(title = "", x = "", y = "p(Asked for hint(s))")
+exp3_p2 <- exp3 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(hints = mean(hints_any)) %>%
+  summarise(m = mean(hints), sd = sd(hints), n = n(), se = sd/sqrt(n)) %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("p(Asked for hint(s))", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+
+exp3_hints <- exp3 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(hints = mean(hints, na.rm = TRUE)) %>% 
+  summarise(m = mean(hints), sd = sd(hints), n = n(), se = sd/sqrt(n))
+exp3_hints
+
+fit_3_hints_b <- lmer(
+  hints ~ curiosity + (curiosity | participant) + (1 | cue),
+  data = exp3
+)
+summary(fit_3_hints_b)
+anova(fit_3_hints_b)
+# exp3_p3 <- plot_model(xb, type = "eff", "curiosity")[[1]] + 
+#   labs(title = "", x = "", y = "Number of hints requested")
+exp3_p3 <- exp3_hints %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("Number of hints requested", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+```
+
+## Final recall
+
+```{r}
+exp3 %>% 
+  group_by(participant) %>% 
+  summarise(recall = mean(test_accuracy, na.rm = TRUE)) %>% 
+  summarise(mean_recall = mean(recall), sd_recall = sd(recall))
+exp3_fr <- exp3 %>% 
+  group_by(curiosity, participant) %>% 
+  summarise(test_accuracy = mean(test_accuracy, na.rm = TRUE)) %>% 
+  summarise(m = mean(test_accuracy), sd = sd(test_accuracy), n = n(), se = sd/sqrt(n))
+exp3_fr
+fit_3_test <- glmer(
+  test_accuracy ~ curiosity + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = exp3
+)
+summary(fit_3_test)
+anova(fit_3_test)
+# exp3_p4 <- plot_model(x, type = "eff", "curiosity")[[1]] + 
+#   coord_cartesian(ylim = c(0, 1)) +
+#   labs(title = "", x = "", y = "p(Final recall)")
+exp3_p4 <- exp3_fr %>% 
+  ggplot(aes(curiosity, m)) +
+  scale_y_continuous("p(Final recall)", expand = expansion(c(0, .2))) +
+  scale_x_discrete("") +
+  geom_col(fill = "gray80", col = "black") +
+  geom_errorbar(aes(ymin = m-se, ymax = m+se), width = .2)
+```
+
+```{r exp3-fig, fig.width = 8, fig.height = 3.4}
+(exp3_p1 | exp3_p2 | exp3_p3 | exp3_p4) &
+  theme(aspect.ratio = 1)
+ggsave("3.png", height = 3.4)
+```
+
+# E3 vs E2
+
+```{r}
+names(exp2)
+names(exp3)
+dat <- bind_rows(exp2, exp3, .id = "experiment") %>% 
+  mutate(experiment = as.factor(as.numeric(experiment)+1)) %>% 
+  mutate(participant = paste(experiment, participant, sep = "_"))
+```
+
+## Waiting time
+
+```{r}
+fit_4_time <- lmer(
+  wait ~ curiosity*experiment + 
+    (curiosity | participant) + (curiosity | cue),
+  data = dat
+)
+summary(fit_4_time)
+anova(fit_4_time)
+plot_model(fit_4_time, type = "int")
+```
+
+## Hint seeking
+
+```{r}
+fit_4_hints_a <- glmer(
+  hints_any ~ curiosity*experiment + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = dat
+)
+summary(fit_4_hints_a)
+anova(fit_4_hints_a)
+plot_model(fit_4_hints_a, type = "int")
+
+fit_4_hints_b <- lmer(
+  hints ~ curiosity*experiment + (curiosity | participant) + (curiosity | cue),
+  data = dat
+)
+summary(fit_4_hints_b)
+anova(fit_4_hints_b)
+plot_model(fit_4_hints_b, type = "int")
+```
+
+## Study time
+
+## Time spent studying the answer
+
+```{r}
+dat %>% 
+  group_by(experiment, participant) %>% 
+  summarise(answer_rt = mean(answer_rt, na.rm = TRUE)) %>% 
+  summarise(m = mean(answer_rt), n = n(), sd = sd(answer_rt))
+fit_4_study <- lmer(
+  answer_rt ~ experiment + (curiosity | participant) + (1 | cue),
+  data = dat
+)
+summary(fit_4_study)
+anova(fit_4_study)
+```
+
+## Final recall
+
+```{r}
+fit_4_test <- glmer(
+  test_accuracy ~ curiosity*experiment + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = dat
+)
+summary(fit_4_test)
+anova(fit_4_test)
+plot_model(fit_4_test, type = "int")
+```
+
+# What predicts recall
+
+```{r}
+x1 <- glmer(
+  test_accuracy ~ hints_any + 
+    (hints_any | participant) + (1 | cue),
+  family = binomial(),
+  data = exp1
+)
+x2 <- glmer(
+  test_accuracy ~ hints_any + 
+    (hints_any | participant) + (1 | cue),
+  family = binomial(),
+  data = exp2
+)
+x3 <- glmer(
+  test_accuracy ~ hints_any + 
+    (hints_any | participant) + (1 | cue),
+  family = binomial(),
+  data = exp3
+)
+
+list(x1, x2, x3) %>% 
+  map(~tidy(., "fixed")) %>% 
+  bind_rows() %>% 
+  filter(term!="(Intercept)") %>% 
+  # knitr::kable(digits = c(1,2,2,2,3)) %>% 
+  glue_data("b = {round(estimate, 2)}, z = {round(statistic, 2)}, p = {round(p.value, 3)}")
+```
+
+# Meta-analysis
+
+## Waiting time
+
+```{r}
+library(metafor)
+# Refit experiment 1 with median split curiosity
+exp1_ma <- exp1 %>% 
+  group_by(participant) %>% 
+  mutate(
+    curiosity = factor(
+      curiosity > median(curiosity, na.rm = TRUE),
+      labels = c("Not curious", "Curious")
+      )
+    ) %>% 
+  ungroup()
+fit_1_time_ma <- lmer(
+  choice_rt ~ curiosity + (curiosity | participant) + (curiosity | cue),
+  data = exp1_ma
+)
+time_ma_terms <- bind_rows(
+  tidy(fit_1_time_ma, "fixed"),
+  tidy(fit_2_time, "fixed"),
+  tidy(fit_3_time, "fixed"),
+  .id = "Experiment"
+) %>% 
+  mutate(Experiment = paste0("Experiment ", Experiment)) %>% 
+  filter(term=="curiosityCurious")
+
+time_ma_fit <- rma(
+  yi = time_ma_terms$estimate, 
+  sei = time_ma_terms$std.error,
+  slab = time_ma_terms$Experiment
+)
+png(filename = "Time-ma.png", height = 3.4, width = 5, units = "in", res = 360)
+forest(
+  time_ma_fit, 
+  xlab = "Effect size", 
+  mlab = "Meta-analytic estimate", 
+  cex = .75
+  )
+dev.off()
+```
+
+## p hints
+
+```{r}
+fit_1_hints_a_ma <- glmer(
+  hints_any ~ curiosity + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = exp1_ma
+)
+
+hints_a_ma_terms <- bind_rows(
+  tidy(fit_1_hints_a_ma, "fixed"),
+  tidy(fit_2_hints_a, "fixed"),
+  tidy(fit_3_hints_a, "fixed"),
+  .id = "Experiment"
+) %>% 
+  mutate(Experiment = paste0("Experiment ", Experiment)) %>% 
+  filter(term=="curiosityCurious")
+
+hints_a_ma_fit <- rma(
+  yi = hints_a_ma_terms$estimate, 
+  sei = hints_a_ma_terms$std.error,
+  slab = hints_a_ma_terms$Experiment
+)
+png(filename = "Hints-a-ma.png", height = 3.4, width = 5, units = "in", res = 360)
+forest(
+  hints_a_ma_fit, xlab = "Effect size", 
+  mlab = "Meta-analytic estimate", 
+  cex = .75
+  )
+dev.off()
+```
+
+## Number of hints
+
+```{r}
+fit_1_hints_b_ma <- lmer(
+  hints ~ curiosity + (curiosity | participant) + (1 | cue),
+  data = exp1_ma
+)
+
+hints_b_ma_terms <- bind_rows(
+  tidy(fit_1_hints_b_ma, "fixed"),
+  tidy(fit_2_hints_b, "fixed"),
+  tidy(fit_3_hints_b, "fixed"),
+  .id = "Experiment"
+) %>% 
+  mutate(Experiment = paste0("Experiment ", Experiment)) %>% 
+  filter(term=="curiosityCurious")
+
+hints_b_ma_fit <- rma(
+  yi = hints_b_ma_terms$estimate, 
+  sei = hints_b_ma_terms$std.error,
+  slab = hints_b_ma_terms$Experiment
+)
+png(filename = "Hints-b-ma.png", height = 3.4, width = 5, units = "in", res = 360)
+forest(
+  hints_b_ma_fit, xlab = "Effect size", 
+  mlab = "Meta-analytic estimate", 
+  cex = .75
+  )
+dev.off()
+```
+
+## Final recall
+
+```{r}
+fit_1_test <- glmer(
+  test_accuracy ~ curiosity + (curiosity | participant) + (1 | cue),
+  family = binomial(),
+  data = exp1_ma
+)
+
+recall_ma_terms <- bind_rows(
+  tidy(fit_1_test, "fixed"),
+  tidy(fit_2_test, "fixed"),
+  tidy(fit_3_test, "fixed"),
+  .id = "Experiment"
+) %>% 
+  mutate(Experiment = paste0("Experiment ", Experiment)) %>% 
+  filter(term=="curiosityCurious")
+
+recall_ma_fit <- rma(
+  yi = recall_ma_terms$estimate, 
+  sei = recall_ma_terms$std.error,
+  slab = recall_ma_terms$Experiment
+)
+png(filename = "Recall-ma.png", height = 3.4, width = 5, units = "in", res = 360)
+forest(
+  recall_ma_fit, xlab = "Effect size", 
+  mlab = "Meta-analytic estimate", 
+  cex = .75
+  )
+dev.off()
+```
+
+## Combined plot
+
+```{r}
+png(filename = "Combined-ma.png", height = 6, width = 6, units = "in", res = 360)
+par(mfrow = c(2, 2))
+forest(
+  time_ma_fit, xlab = "Effect size", 
+  cex = .75, main = "'Waiting time'"
+  )
+forest(
+  hints_a_ma_fit, xlab = "Effect size", 
+  cex = .75, main = "p(Asked for hint(s))"
+  )
+forest(
+  hints_b_ma_fit, xlab = "Effect size",
+  cex = .75, main = "Number of hints requested"
+  )
+forest(
+  recall_ma_fit, xlab = "Effect size", 
+  cex = .75, main = "p(Final recall)"
+  )
+dev.off()
+par(mfrow = c(1, 1))
+```
+
+# System information
+
+```{r}
+sessionInfo()
+```
+
